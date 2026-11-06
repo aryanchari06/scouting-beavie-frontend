@@ -1,0 +1,48 @@
+{
+    "name": "Scouting Beavie",
+    "description": "AI-powered job scout that analyzes job listings against your local resume to score profile fit, spot skill gaps, and give tailoring advice.",
+    "version": "1.0",
+    "manifest_version": 3,
+    "icons": {
+        "16": "dist/beavie.png",
+        "32": "dist/beavie.png",
+        "48": "dist/beavie.png",
+        "128": "dist/beavie.png"
+    },
+    "action": {
+        "default_popup": "dist/index.html",
+        "default_icon": "dist/beavie.png"
+    },
+    "background": {
+        "service_worker": "dist/background.js"
+    },
+    "content_scripts": [
+        {
+            "js": [
+                "dist/fetch-content.js"
+            ],
+            "matches": [
+                "https://in.indeed.com/*",
+                "https://in.indeed.com/viewjob*"
+            ]
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "public/beavie.png",
+                "public/animations/beaver-idle.gif",
+                "public/animations/beaver-scouting.gif",
+                "public/animations/beaver-match.gif",
+                "public/animations/beaver-tailor.gif",
+                "public/animations/beaver-hmm.gif"
+            ],
+            "matches": [
+                "https://in.indeed.com/*"
+            ]
+        }
+    ],
+    "permissions": [
+        "storage"
+    ]
+}
