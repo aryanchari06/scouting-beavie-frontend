@@ -1,271 +1,88 @@
-# Scouting Beavie: Frontend Documentation
+# 🦫 Scouting Beavie — AI Job Fit Scout for Chrome
 
-Chrome extension that scans a web page for job openings, compares them with your resume, and scores how well you fit each one. No login is needed. Users are identified by an anonymous install ID.
+**Scouting Beavie** is a privacy-first Chrome extension that acts as your personal AI job-hunting companion. Instead of spending hours reading lengthy job descriptions to figure out if you qualify, Beavie compares any job opening against your resume in a single click—giving you an instant match score, strengths, missing requirements, and resume-tailoring advice.
 
-> **Status:** Built, working, and backend deployed. Items marked `TODO` need to be filled in from the extension source, because they could not be confirmed from the backend side.
-
----
-
-## 1. Overview
-
-| Item | Value |
-|---|---|
-| Type | Chrome extension (Manifest V3) |
-| UI | Built with Antigravity |
-| Auth | None. Anonymous install ID per installation |
-| Backend | AWS SAM, Lambda Function URLs, Node.js 24, DynamoDB, Bedrock |
-| Region | `ap-south-1` |
-
-### User flow
-
-1. User installs the extension. An install ID is generated and stored locally.
-2. User uploads their resume as a PDF.
-3. The extension sends the PDF to `/parse-pdf` and receives plain text.
-4. User opens a page with job listings and triggers a scan.
-5. The extension sends the resume text and job data to `/match-job-profile`.
-6. The extension shows a fit score and reasoning for each job.
+No account, login, or sign-up required!
 
 ---
 
-## 2. Install ID
+## ✨ What It Does
 
-Every request to a protected endpoint must send the header:
+1. **Upload Your Resume Once**
+   Drop your PDF resume into the Scouting Beavie popup. Your resume text is extracted and saved **locally inside your browser** so you never have to re-upload it unless you want to switch resumes.
 
-```
-x-install-id: <install id>
-```
+2. **Automatic Job Detection on Indeed**
+   Whenever you open a job listing on **Indeed**, Beavie appears in the top-right corner of the page. As you click between different job cards, Beavie automatically updates and resets for the job you are currently viewing.
 
-Rules enforced by the backend:
+3. **One-Click AI Profile Match**
+   Click **"Check if this job is a good fit"** and Beavie will analyze the job header, summary, and full description against your resume.
 
-- Must be a non-empty string, at most **128 characters**.
-- Must be sent on every call to `/parse-pdf` and `/match-job-profile`.
-- Generated once, on first run, and reused for the life of the installation.
+4. **Playful Visual Verdicts & Actionable Advice**
+   Once the analysis finishes, Beavie reacts with a custom animation, displays your **Match Score (`%`)** on his badge, and gives one of three clear recommendations:
+   - 🟢 **Apply Now** — Your skills and experience strongly align with the role.
+   - 🟡 **Apply with Tailoring** — You have a solid foundation, and Beavie tells you exactly which projects or skills to emphasize before applying.
+   - 🔴 **Skip Job** — The role has core requirements (such as years of experience, tech stack, or location) that don't match your profile.
 
-Recommended generation and storage:
-
-```javascript
-async function getInstallId() {
-  const { installId } = await chrome.storage.local.get('installId')
-  if (installId) return installId
-
-  const id = crypto.randomUUID()
-  await chrome.storage.local.set({ installId: id })
-  return id
-}
-```
-
-Notes:
-
-- Use `chrome.storage.local`, not `localStorage`, so the ID is shared by the popup, side panel, and service worker.
-- The ID is not a secret and is not a security boundary. Real abuse protection happens on the backend through per-IP limits.
-- If the user reinstalls the extension, a new ID is created and their per-install quota resets. Per-IP limits still apply.
+5. **Collapsible Full Match Report**
+   Click **"Show details ▼"** on the button to expand a clean breakdown containing:
+   - **Match Score & Verdict** (e.g., `70% FIT`)
+   - **Beavie's Advice** — Actionable tips on how to tailor your resume for this specific opening.
+   - **✓ Profile Matches** — Skills, experience, and education from your resume that match the job.
+   - **⚠ Missing / Gaps** — Missing requirements clearly tagged as **`REQUIRED`** or **`PREFERRED`** so you know whether a gap is a dealbreaker or just a nice-to-have.
 
 ---
 
-## 3. Backend API contract
+## 🚀 How to Use Scouting Beavie
 
-Base URLs come from the stack outputs `ParsePdfUrl` and `MatchJobProfileUrl`. Keep them in one config file.
+### Step 1: Save Your Resume
+1. Click the **Scouting Beavie** icon in your Chrome toolbar to open the popup.
+2. Click **Select Resume (.pdf)** and choose your resume file *(text-based PDF, up to 2 pages and under 5 MB)*.
+3. Click **Save Resume to Beavie**.
+4. Once saved, the popup will display your stored filename (`✓ Resume Stored Locally`). You can replace it anytime by clicking **Upload a new resume**.
 
-```javascript
-// config.js
-export const API = {
-  parsePdf: 'https://<parse-pdf-function-url>/parse-pdf',
-  matchJob: 'https://<match-job-function-url>/match-job-profile',
-}
-```
-
-### 3.1 `POST /parse-pdf`
-
-Extracts text from a resume PDF.
-
-**Request**
-
-- Method: `POST`
-- Headers: `Content-Type: application/pdf`, `x-install-id: <id>`
-- Body: the raw PDF bytes
-
-```javascript
-async function parseResume(file, installId) {
-  const res = await fetch(API.parsePdf, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/pdf',
-      'x-install-id': installId,
-    },
-    body: file, // File or Blob, sent as binary
-  })
-  const json = await res.json()
-  if (!res.ok) throw new ApiError(res.status, json.message)
-  return json.data.text
-}
-```
-
-**Limits**
-
-| Rule | Value |
-|---|---|
-| Max file size | 5 MB |
-| Max pages | 2 |
-| Max extracted text | 100,000 characters |
-| Must start with | `%PDF` |
-
-Validate size and type on the client first so users get instant feedback and don't waste quota.
-
-**Responses**
-
-| Status | Meaning | Suggested UI message |
-|---|---|---|
-| 200 | `{ "data": { "text": "..." } }` | Resume saved |
-| 400 | Missing body or invalid install ID | Something went wrong. Please reload the extension |
-| 413 | File too large | File must be under 5 MB |
-| 415 | Not a valid PDF | Please upload a valid PDF |
-| 422 | More than 2 pages, no readable text, too much text, or unreadable | Use a text-based PDF of 2 pages or fewer |
-| 429 | Daily quota used up | Daily limit reached. Try again tomorrow |
-| 500 | Server error (retryable) | Something went wrong. Please try again |
-
-Scanned or image-only PDFs return "No readable text found" because there is no OCR.
-
-### 3.2 `POST /match-job-profile`
-
-Scores a resume against a job. Uses Bedrock, so it has the tightest quota.
-
-**Request**
-
-- Method: `POST`
-- Headers: `Content-Type: application/json`, `x-install-id: <id>`
-- Body: `TODO` (copy the exact JSON shape from the extension source)
-
-**Responses**
-
-Same error codes as above, plus the model response shape: `TODO`.
+### Step 2: Scout Jobs on Indeed
+1. Visit [Indeed](https://in.indeed.com) and click on any job opening.
+2. Look for the floating **Beavie widget** in the top-right corner of the page.
+3. Click **"Check if this job is a good fit"**.
+4. Wait a few seconds while Beavie scans the listing.
+5. Click **"Show details ▼"** to read your full match breakdown, or click **"Hide details ▲"** (or the top-right **`✕`** button) when you're done.
 
 ---
 
-## 4. Rate limits
+## 🔒 Privacy First
 
-Counted per UTC day. The day resets at 00:00 UTC (05:30 IST).
-
-| Endpoint | Per install ID | Per IP |
-|---|---|---|
-| `/parse-pdf` | 10 / day | 50 / day |
-| `/match-job-profile` | 3 / day | 10 / day |
-
-Every request counts toward the limit, including ones the server later rejects (for example a 3-page PDF). Pre-validate files on the client to avoid wasting quota.
-
-When the limit is hit, the backend returns `429` with:
-
-```json
-{ "message": "You have exhausted your quota for today. Try again tomorrow!" }
-```
-
-Frontend behavior:
-
-- Show a clear "daily limit reached" state. Do not retry automatically on 429.
-- Do not auto-retry on 500 in a loop either. Allow at most one manual retry.
-- `TODO`: decide whether to show remaining quota in the UI. The backend does not currently return it.
+We take your privacy seriously:
+- **No Sign-Up Required:** You never have to provide your name, email address, or create an account.
+- **Stored Locally in Your Browser:** Your parsed resume text and filename are stored strictly inside your own browser (`chrome.storage.local`).
+- **No Resume Database:** Your PDF resume is never saved or stored on any external server or database. It is only processed in memory to extract text and compute your job fit score.
 
 ---
 
-## 5. Error handling
+## 📌 Good to Know (Limits & Requirements)
 
-Use one small wrapper so every screen handles errors the same way.
-
-```javascript
-class ApiError extends Error {
-  constructor(status, message) {
-    super(message)
-    this.status = status
-  }
-}
-
-function toUserMessage(err) {
-  switch (err.status) {
-    case 413: return 'File must be under 5 MB.'
-    case 415: return 'Please upload a valid PDF.'
-    case 422: return err.message
-    case 429: return 'Daily limit reached. Try again tomorrow.'
-    default:  return 'Something went wrong. Please try again.'
-  }
-}
-```
-
-422 messages from the backend are already user-friendly, so they can be shown as they are.
+- **Resume Format:** Please use a **text-based PDF** (up to **2 pages** and under **5 MB**). Scanned image-only PDFs are not supported.
+- **Fair-Use Daily Quota:** Because Scouting Beavie uses AI to analyze each job description in depth, there is a free daily usage limit per user. If you hit your daily limit, Beavie will let you know to come back tomorrow when your quota resets!
+- **Supported Job Portals:** Currently available on **Indeed (`in.indeed.com`)**. We are actively working on onboarding additional job portals soon!
 
 ---
 
-## 6. Manifest and permissions
+## 🛠️ Installing Locally (Unpacked Extension)
 
-`TODO`: paste the final `manifest.json`.
+If you are installing Scouting Beavie from source:
 
-Checklist for Chrome Web Store review:
-
-- Request only the permissions you use. Each one needs a written justification in the listing.
-- Host permissions for the two Function URLs, plus whatever job sites the content script runs on.
-- Prefer `activeTab` over broad `<all_urls>` if scanning only happens on user action.
-- No remotely hosted code.
-
----
-
-## 7. Privacy and data handling
-
-This is needed for the Web Store privacy section.
-
-- The resume PDF is sent to the backend only to extract text. The PDF itself is not stored.
-- Resume text and job data are sent to AWS Bedrock to compute the fit score.
-- The only identifier kept server-side is the anonymous install ID, plus daily request counters keyed by install ID and IP. Counters expire automatically after about 2 days.
-- No account, name, or email is collected.
-- `TODO`: confirm what the frontend stores locally (resume text, last results) and for how long.
-- `TODO`: publish a privacy policy URL and add it to the listing.
-
----
-
-## 8. Project structure
-
-`TODO`: replace with the actual tree.
-
-```
-extension/
-├── manifest.json
-├── src/
-│   ├── popup/        # UI
-│   ├── content/      # page scanning
-│   ├── background/   # service worker
-│   └── lib/
-│       ├── api.js    # fetch wrappers
-│       ├── config.js # backend URLs
-│       └── id.js     # install ID
-└── icons/
-```
-
----
-
-## 9. Local development
-
-1. Open `chrome://extensions` and enable **Developer mode**.
-2. Click **Load unpacked** and select the extension folder.
-3. Set the backend URLs in `config.js` to the deployed Function URLs.
-4. After changing code, click the reload icon on the extension card.
-
-To test quota handling, send repeated requests with a fixed `x-install-id`. Use a new ID to reset the per-install counter. The per-IP counter will not reset.
-
----
-
-## 10. Release checklist
-
-- [ ] Backend URLs in `config.js` point to production
-- [ ] Version bumped in `manifest.json`
-- [ ] CORS on both Function URLs locked to `chrome-extension://<extension-id>` (after the first publish gives you the ID)
-- [ ] Permission justifications written
-- [ ] Privacy policy URL ready
-- [ ] Screenshots and icons prepared
-- [ ] One full end-to-end test: upload PDF, scan a page, get a score
-- [ ] Zip the extension folder and upload to the Chrome Web Store dashboard
-
----
-
-## 11. Known limitations and future work
-
-- No OCR, so image-only PDFs are rejected.
-- Resume limit is 2 pages.
-- Per-install quota can be reset by reinstalling. Per-IP limits and the backend's cost controls bound the worst case.
-- Planned: global daily cap, Lambda reserved concurrency after a quota increase, scoped Bedrock permissions, CORS lockdown.
+1. Clone this repository and install dependencies:
+   ```bash
+   npm install
+   ```
+2. Create a `.env` file in the project root with the API endpoints:
+   ```env
+   VITE_PARSE_PDF_URL=<your-parse-pdf-endpoint>
+   VITE_MATCH_JOB_URL=<your-match-job-profile-endpoint>
+   ```
+3. Build the extension bundle:
+   ```bash
+   npm run build
+   ```
+4. Open Chrome and navigate to `chrome://extensions`.
+5. Enable **Developer mode** (toggle in the top-right corner).
+6. Click **Load unpacked** and select this project folder.
