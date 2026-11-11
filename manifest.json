@@ -1,7 +1,7 @@
 {
     "name": "Scouting Beavie",
-    "description": "AI-powered job scout that analyzes job listings against your local resume to score profile fit, spot skill gaps, and give tailoring advice.",
-    "version": "1.0",
+    "description": "AI job scout that compares listings with your resume, scores fit, identifies skill gaps, and offers tailoring advice.",
+    "version": "1.0.0",
     "manifest_version": 3,
     "icons": {
         "16": "dist/beavie.png",
