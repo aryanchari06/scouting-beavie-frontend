@@ -1,5 +1,9 @@
 # 🦫 Scouting Beavie — AI Job Fit Scout for Chrome
 
+<p align="center">
+  <img src="./public/demo.gif" alt="Scouting Beavie Demo" width="100%"/>
+</p>
+
 **Scouting Beavie** is a privacy-first Chrome extension that acts as your personal AI job-hunting companion. Instead of spending hours reading lengthy job descriptions to figure out if you qualify, Beavie compares any job opening against your resume in a single click—giving you an instant match score, strengths, missing requirements, and resume-tailoring advice.
 
 No account, login, or sign-up required!
